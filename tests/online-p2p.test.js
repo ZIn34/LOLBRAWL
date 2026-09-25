@@ -30,7 +30,7 @@ function makeGame(name) {
   const listeners = {}; let raf = null; let T = 0;
   const ctx2d = new Proxy({}, { get: (t, k) => k in t ? t[k] : noop, set: (t, k, v) => (t[k] = v, true) });
   const el = () => ({ getContext: () => ctx2d, addEventListener: noop, getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 640 }),
-    style: {}, classList: { add: noop, toggle: noop }, setPointerCapture: noop, hidden: false, textContent: '' });
+    style: {}, classList: { add: noop, toggle: noop }, setPointerCapture: noop, focus: noop, blur: noop, hidden: false, textContent: '' });
   const g = { document: { getElementById: el, createElement: el, body: el(), fonts: { ready: Promise.resolve() } }, devicePixelRatio: 1,
     matchMedia: () => ({ matches: false }), addEventListener: (t, f) => { (listeners[t] = listeners[t] || []).push(f); },
     navigator: { getGamepads: () => [] }, performance: { now: () => T }, requestAnimationFrame: f => { raf = f; },
@@ -53,7 +53,7 @@ const check = (ok, msg) => { if (!ok) { console.error('FAIL', msg); process.exit
     for (let i = 0; i < 5; i++) { host.step(); guest.step(); }
     guest.tap('Enter');                                                               // QUICK PLAY joins the open game
     for (let i = 0; i < 10; i++) { host.step(); guest.step(); }
-    check(host.g.__mine().guest === 'guestpeer567' && host.g.__mine().s, name + ': guest did not join');
+    check((host.g.__mine().guests || []).includes('guestpeer567') && host.g.__mine().s, name + ': guest did not join');
     for (let i = 0; i < 120; i++) { host.step(); guest.step(); }                    // versus: wait out the round intro
     const x0 = host.g.__g().players[1].x;
     guest.key('KeyA');                                                                // guest walks left

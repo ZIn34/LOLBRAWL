@@ -4,7 +4,7 @@ src = src.replace(/requestAnimationFrame\(frame\);\s*\}\)\(\);\s*$/, 'globalThis
 const noop = () => {};
 const listeners = {}; let raf = null; let T = 0;
 const ctx2d = new Proxy({}, { get: (t, k) => k in t ? t[k] : noop, set: (t, k, v) => (t[k] = v, true) });
-const el = () => ({ getContext: () => ctx2d, addEventListener: noop, getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 640 }), style: {}, classList: { add: noop, toggle: noop }, setPointerCapture: noop, hidden: false });
+const el = () => ({ getContext: () => ctx2d, addEventListener: noop, getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 640 }), style: {}, classList: { add: noop, toggle: noop }, setPointerCapture: noop, focus: noop, blur: noop, hidden: false });
 const g = { document: { getElementById: el, createElement: el, body: el(), fonts: { ready: Promise.resolve() } }, devicePixelRatio: 1, matchMedia: () => ({ matches: false }),
   addEventListener: (t, f) => { (listeners[t] = listeners[t] || []).push(f); }, navigator: { getGamepads: () => [] }, performance: { now: () => T }, requestAnimationFrame: f => { raf = f; },
   localStorage: { getItem: () => null, setItem: noop }, Math, JSON, Object, Array, Set, Map, String, Number, Promise, isFinite, console };

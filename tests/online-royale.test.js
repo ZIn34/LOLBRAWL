@@ -15,7 +15,7 @@ function makeRoom(me) {
 function makeGame(name) {
   const listeners = {}; let raf = null; let T = 0;
   const ctx2d = new Proxy({}, { get: (t, k) => k in t ? t[k] : noop, set: (t, k, v) => (t[k] = v, true) });
-  const el = () => ({ getContext: () => ctx2d, addEventListener: noop, getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 640 }), style: {}, classList: { add: noop, toggle: noop }, setPointerCapture: noop, hidden: false, textContent: '' });
+  const el = () => ({ getContext: () => ctx2d, addEventListener: noop, getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 640 }), style: {}, classList: { add: noop, toggle: noop }, setPointerCapture: noop, focus: noop, blur: noop, hidden: false, textContent: '' });
   const room = makeRoom(name);
   const g = { document: { getElementById: el, createElement: el, body: el(), fonts: { ready: Promise.resolve() } }, devicePixelRatio: 1, matchMedia: () => ({ matches: false }),
     addEventListener: (t, f) => { (listeners[t] = listeners[t] || []).push(f); }, navigator: { getGamepads: () => [] },
@@ -31,8 +31,8 @@ function makeGame(name) {
   for (const x of [host, guest]) { x.tap('Digit4'); x.tap('KeyS'); x.tap('KeyS'); x.tap(process.argv[2] === 'solo' ? 'Enter' : 'KeyS'); if (process.argv[2] !== 'solo') x.tap('Enter'); }
   host.tap('Enter');
   for (let i = 0; i < 5; i++) { host.step(); guest.step(); }
-  guest.tap('KeyS'); guest.tap('Enter');
-  for (let i = 0; i < 10; i++) { host.step(); guest.step(); }
+  guest.tap('Enter');
+  for (let i = 0; i < 60 * 21; i++) { host.step(); guest.step(); }   // the lobby fills for 20 s, then starts
   let maxBytes = 0;
   for (let i = 0; i < 60 * 120; i++) {
     if (i % 25 === 0) { host.tap('KeyF'); guest.tap('KeyF'); }

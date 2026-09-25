@@ -112,6 +112,11 @@
   #btns button:active { border-color: var(--p1); color: var(--p1); }
   #btns .kick { border-color: var(--pink); }
   #btns .block { border-color: var(--p2); }
+  #roomCode {
+    position: absolute; transform: translate(-50%, -50%); width: 7ch; padding: 6px 10px;
+    font: 700 28px var(--pixel); letter-spacing: 0.25em; text-align: center; text-transform: uppercase;
+    color: var(--ink); background: var(--panel); border: 3px solid var(--p1); border-radius: 10px; outline: none;
+  }
   #bPause {
     position: absolute; right: 8px; top: 8px; width: 48px; height: 40px;
     font: 700 14px var(--pixel); color: var(--ink);
@@ -126,6 +131,7 @@
 
 <div id="stage">
   <canvas id="game" aria-label="LOLbrawl game screen"></canvas>
+  <input id="roomCode" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Room code" hidden>
   <div id="touch">
     <div id="joyzone"></div>
     <div id="joy" hidden><div id="knob">lol</div></div>
@@ -360,7 +366,7 @@
         const a = Math.atan2(AH / 2 - spot.y, AW / 2 - spot.x);
         const p = makePlayer(i, spot.x, spot.y);
         p.team = team;
-        p.human = i === 0 || (net.role === 'host' && i === 1);
+        p.human = i === 0 || (net.role === 'host' && i <= net.guests.length && !!net.guests[i - 1]);
         p.col = royaleCol(i, team);
         p.name = royaleName(i, team);
         p.fx = Math.cos(a); p.fy = Math.sin(a);
@@ -578,7 +584,7 @@
     return [a, b];
   }
   // the player a local slot drives
-  const slotPlayer = s => net.role === 'host' ? players[0] : net.role === 'guest' ? players[1] : players[s];
+  const slotPlayer = s => net.role === 'host' ? players[0] : net.role === 'guest' ? players[net.slot] : players[s];
 
   function readSlot(src, self) {
     let mx = 0, my = 0, aim = null;
@@ -607,11 +613,12 @@
   }
 
   function computeInputs() {
-    if (state !== 'play' || paused) { inputs[0] = blankInput(); inputs[1] = blankInput(); net.localIn = blankInput(); if (net.role === 'host') inputs[1] = net.remoteIn || blankInput(); return; }
+    const remote = () => { if (net.role === 'host') for (const k in net.remote) inputs[k] = net.remote[k].in; };
+    if (state !== 'play' || paused) { inputs[0] = blankInput(); inputs[1] = blankInput(); net.localIn = blankInput(); remote(); return; }
     const slots = localSlots();
-    if (net.role === 'guest') { net.localIn = readSlot(slots[0], players[1]); return; }
+    if (net.role === 'guest') { net.localIn = readSlot(slots[0], players[net.slot]); return; }
     slots.forEach((s, i) => { const f = slotPlayer(i); if (f) inputs[f.i] = readSlot(s, f); });
-    if (net.role === 'host') inputs[1] = net.remoteIn || blankInput();
+    remote();
   }
 
   function localAct(slot, action) {
@@ -619,7 +626,7 @@
     act(slotPlayer(slot), action);
   }
 
-  const localMe = () => players[net.role === 'guest' ? 1 : 0];
+  const localMe = () => players[net.role === 'guest' ? net.slot : 0];
   const pvp = () => mode === 'versus' || mode === 'royale';
   const canAct = f => !f.dead && !f.koed && !f.knocked && f.stun <= 0 && f.broken <= 0 && !(mode === 'versus' && rstate !== 'fight');
 
@@ -681,9 +688,28 @@
     fx('dash', f.x, f.y, dx, dy); sfx('dash', f.x, f.y);
   }
 
+  const codeInput = document.getElementById('roomCode');
+  function syncCodeInput() {
+    const show = state === 'menu' && screen === 'code';
+    if (codeInput.hidden === show) {
+      codeInput.hidden = !show;
+      if (show) setTimeout(() => { try { codeInput.focus(); } catch (e) {} }, 0);
+    }
+    if (show) {
+      const L = menuLayout();
+      codeInput.style.left = (ox + W / 2 * scale) + 'px';
+      codeInput.style.top = (oy + (L[0].y - 50) * scale) + 'px';
+      codeInput.style.fontSize = Math.max(16, 28 * scale) + 'px';
+    }
+  }
   const PREVENT = new Set(['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Slash', 'Quote', 'Period', 'Comma', 'Numpad0', 'Numpad1', 'Numpad2', 'Numpad3']);
   addEventListener('keydown', e => {
     audioInit();
+    if (e.target === codeInput) {
+      if (e.key === 'Enter') { e.preventDefault(); submitCode(); }
+      else if (e.key === 'Escape') { codeInput.blur(); setScreen('lobby'); }
+      return;
+    }
     const k = e.code;
     if (PREVENT.has(k)) e.preventDefault();
     if (!keys[k]) onPress(k);
@@ -848,7 +874,7 @@
   let touchUi = '';
   function syncTouchUi() {
     const playing = state === 'play' && !paused;
-    const me = players[net.role === 'guest' ? 1 : 0];
+    const me = localMe();
     const key = (playing ? 1 : 0) + (me && me.gun > 0 ? 'g' : 'p');
     if (key === touchUi) return;
     touchUi = key;
@@ -865,7 +891,9 @@
   const isRoyaleNet = m => m === 'royale' || m === 'royale1';
   function openHosts() {
     if (!net.room) return [];
-    return net.room.peers().filter(p => !p.sameTab && p.presence && p.presence.role === 'host' && p.presence.open === true && p.presence.mode === net.mode).slice(0, 3);
+    // quick play only matches public games that still have space
+    return net.room.peers().filter(p => !p.sameTab && p.presence && p.presence.role === 'host' && p.presence.open === true && !p.presence.code &&
+      p.presence.mode === net.mode && guestCount(p.presence) < maxGuests(net.mode));
   }
   const tag = peer => 'lol#' + String(peer).slice(0, 4);
   function menuItems() {
@@ -902,14 +930,21 @@
       const items = [];
       if (net.room) {
         if (isRoyaleNet(net.mode)) royaleDuos = net.mode === 'royale';
-        // quick play: hop into an open game if there is one, otherwise open your own and wait
-        items.push({ label: 'QUICK PLAY', sub: 'join an open game, or start one', go: () => { const h = openHosts()[0]; if (h) joinGame(h.peer); else hostGame(); } });
-        for (const h of openHosts()) items.push({ label: 'JOIN ' + tag(h.peer), sub: MODE_NAME[net.mode].toLowerCase() + ' · waiting for you', go: () => joinGame(h.peer) });
+        items.push({ label: 'QUICK PLAY', sub: 'search for players', go: quickPlay });
+        items.push({ label: 'CREATE ROOM', sub: 'get a code to share with friends', go: () => hostGame(makeCode()) });
+        items.push({ label: 'JOIN ROOM', sub: 'type a friend\'s room code', go: () => { codeInput.value = ''; setScreen('code'); } });
       }
       items.push({ label: 'BACK', go: () => setScreen(isRoyaleNet(net.mode) ? 'br' : 'where') });
       return items;
     }
-    if (screen === 'hosting' || screen === 'joining') return [{ label: 'CANCEL', go: () => { leaveOnline(); setScreen('lobby'); } }];
+    if (screen === 'code') return [
+      { label: 'JOIN', sub: 'find the room', go: submitCode },
+      { label: 'BACK', go: () => setScreen('lobby') }
+    ];
+    if (screen === 'finding') return [{ label: 'CANCEL', go: () => setScreen('lobby') }];
+    const cancel = { label: 'CANCEL', go: () => { leaveOnline(); setScreen('lobby'); } };
+    if (screen === 'hosting' && net.code && isRoyaleNet(net.mode)) return [{ label: 'START NOW', sub: (1 + guestCount({ guests: net.guests })) + ' players in the room', go: startHosted }, cancel];
+    if (screen === 'hosting' || screen === 'joining') return [cancel];
     return [];
   }
   function setScreen(s) { screen = s; sel = 0; if (s === 'lobby') ensureOnline(); }
@@ -919,6 +954,7 @@
     if (screen === 'where' || screen === 'br' || screen === 'help' || screen === 'lb') setScreen('title');
     else if (screen === 'lobby') setScreen(isRoyaleNet(net.mode) ? 'br' : 'where');
     else if (screen === 'hosting' || screen === 'joining') { leaveOnline(); setScreen('lobby'); }
+    else if (screen === 'code' || screen === 'finding') setScreen('lobby');
   }
   const BW = () => Math.min(420, W - 100), BH = () => screen === 'title' ? 54 : 62;
   function menuLayout() {
@@ -1106,11 +1142,13 @@
     heavy.onMessage = (data, meta) => got(meta && meta.peerId, data, true);
     // game snapshots and inputs only go to your partner, about 30 times a second
     const flush = () => {
-      if (!dirtyHeavy || !net.peer || !others.has(net.peer)) return;
+      if (!dirtyHeavy) return;
+      const targets = (net.role === 'host' ? (net.guests || []) : [net.peer]).filter(id => id && others.has(id));
+      if (!targets.length) return;
       dirtyHeavy = false; since = performance.now();
       const h = {};
       for (const k of HEAVY) h[k] = k in mine ? mine[k] : null;
-      heavy.send(h, { target: net.peer });
+      for (const id of targets) heavy.send(h, { target: id });
     };
     setInterval(flush, 33);
     return {
@@ -1133,21 +1171,35 @@
     };
   }
   function setPres(patch) { if (net.room) net.room.presence(patch).catch(() => {}); }
-  const PRES_RESET = { role: null, mode: null, open: null, guest: null, s: null, host: null, in: null };
-  function hostGame() {
+  const PRES_RESET = { role: null, mode: null, open: null, guests: null, code: null, lobbyT: null, s: null, host: null, in: null };
+  const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const makeCode = () => Array.from({ length: 4 }, () => CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0]).join('');
+  // battle royale fills up to 16 real players (bots take the rest); co-op and versus are 1 v 1
+  const maxGuests = m => isRoyaleNet(m) ? 15 : 1;
+  const guestCount = p => Array.isArray(p.guests) ? p.guests.filter(Boolean).length : 0;
+  const LOBBY_WAIT = 20;
+  net.guests = []; net.remote = {}; net.slot = 1; net.hc = 2;
+  const humanCount = () => net.role === 'host' ? 1 + net.guests.length : net.role === 'guest' ? net.hc : 1;
+
+  function hostGame(code) {
     if (!net.room) return;
-    net.role = 'host'; net.peer = null; net.seen = null; net.remoteIn = null;
-    setPres(Object.assign({}, PRES_RESET, { role: 'host', mode: net.mode, open: true }));
+    Object.assign(net, { role: 'host', peer: null, guests: [], remote: {}, code: code || null, quick: !code, lobbyT: LOBBY_WAIT, shownT: -1 });
+    setPres(Object.assign({}, PRES_RESET, { role: 'host', mode: net.mode, open: true, guests: [], code: net.code, lobbyT: isRoyaleNet(net.mode) && !code ? LOBBY_WAIT : null }));
     setScreen('hosting');
   }
-  function joinGame(peer) {
-    net.role = 'guest'; net.peer = peer; net.lastSeq = -1; net.lastS = null; net.cnt = { punch: 0, kick: 0, dash: 0 };
+  function joinGame(peer, quick) {
+    Object.assign(net, { role: 'guest', peer, slot: 1, quick: !!quick, lobbyN: 0, lobbyT: 0, lastSeq: -1, lastS: null, cnt: { punch: 0, kick: 0, dash: 0 } });
     setPres(Object.assign({}, PRES_RESET, { role: 'guest', host: peer }));
     setScreen('joining');
   }
+  // quick play: join a public game with space, or open one and keep searching
+  function quickPlay() {
+    const h = openHosts()[0];
+    if (h) joinGame(h.peer, true); else hostGame(null);
+  }
   function leaveOnline() {
     setPres(PRES_RESET);
-    net.role = null; net.peer = null; net.seen = null; net.remoteIn = null; net.lastS = null;
+    Object.assign(net, { role: null, peer: null, guests: [], remote: {}, lastS: null, code: null, quick: false });
   }
   function endOnline(msg, backTo = 'title') {
     leaveOnline();
@@ -1162,8 +1214,38 @@
     enemies = []; projs = []; parts = []; pops = []; pickups = [];
     state = 'play'; paused = false; overT = 0; banner = null; recorded = false; lb.last = '';
   }
+  function startHosted() {
+    if (net.role !== 'host' || state !== 'menu') return;
+    net.guests = net.guests.filter(Boolean).slice(0, maxGuests(net.mode));
+    setPres({ open: false, guests: net.guests, lobbyT: null });
+    if (isRoyaleNet(net.mode)) royaleDuos = net.mode === 'royale';
+    startMode(isRoyaleNet(net.mode) ? 'royale' : net.mode);
+  }
 
-  function netTick() {
+  // join by code: look for a host showing that code, for a few seconds
+  let codeWant = '', codeT = 0;
+  function submitCode() {
+    const c = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    if (c.length < 4) { note = 'room codes are 4 characters'; noteT = 2.5; return; }
+    codeWant = c; codeT = 8;
+    codeInput.blur();
+    setScreen('finding'); ensureOnline();
+  }
+  function findRoom(dt) {
+    codeT -= dt;
+    if (net.room) {
+      const h = net.room.peers().find(p => !p.sameTab && p.presence && p.presence.role === 'host' && p.presence.open === true && p.presence.code === codeWant);
+      if (h) {
+        net.mode = MODE_NAME[h.presence.mode] ? h.presence.mode : 'coop';
+        if (isRoyaleNet(net.mode)) royaleDuos = net.mode === 'royale';
+        if (guestCount(h.presence) >= maxGuests(net.mode)) { note = 'room ' + codeWant + ' is full'; noteT = 3; setScreen('code'); return; }
+        joinGame(h.peer, false); return;
+      }
+    }
+    if (codeT <= 0) { note = 'no room found with code ' + codeWant; noteT = 3; setScreen('code'); }
+  }
+
+  function netTick(dt) {
     const room = net.room;
     if (!room || !net.role) return;
     const peers = room.peers();
@@ -1171,28 +1253,61 @@
     if (!net.me) return;
     if (net.role === 'host') {
       if (state === 'menu') {
-        const j = peers.find(p => !p.sameTab && p.presence && p.presence.role === 'guest' && p.presence.host === net.me);
-        if (j) {
-          net.peer = j.peer; setPres({ open: false, guest: j.peer });
-          if (isRoyaleNet(net.mode)) royaleDuos = net.mode === 'royale';
-          startMode(isRoyaleNet(net.mode) ? 'royale' : net.mode);
+        // take everyone asking to join, up to the mode's limit
+        const asking = peers.filter(p => !p.sameTab && p.presence && p.presence.role === 'guest' && p.presence.host === net.me).map(p => p.peer);
+        const before = net.guests.join();
+        net.guests = net.guests.filter(g => asking.includes(g));
+        for (const g of asking) if (!net.guests.includes(g) && net.guests.length < maxGuests(net.mode)) net.guests.push(g);
+        if (net.guests.join() !== before) setPres({ guests: net.guests });
+        if (!isRoyaleNet(net.mode)) { if (net.guests.length) { startHosted(); return; } }
+        else if (net.quick) {
+          // battle royale: fill the lobby for up to 20 seconds, then start with whoever is here
+          net.lobbyT -= dt;
+          if (net.guests.length >= maxGuests(net.mode) || net.lobbyT <= 0) { startHosted(); return; }
+          const t = Math.ceil(net.lobbyT);
+          if (t !== net.shownT) { net.shownT = t; setPres({ lobbyT: t }); }
+        }
+        // two players searching at the same moment: the one with the higher id joins the other
+        if (net.quick && !net.guests.length) {
+          const rival = peers.find(p => !p.sameTab && p.presence && p.presence.role === 'host' && p.presence.open === true && !p.presence.code &&
+            p.presence.mode === net.mode && String(p.peer) < String(net.me));
+          if (rival) { leaveOnline(); joinGame(rival.peer, true); }
         }
         return;
       }
-      const g = peers.find(p => p.peer === net.peer);
-      if (!g || !g.presence || g.presence.role !== 'guest' || g.presence.host !== net.me) { endOnline('your friend left the game'); return; }
-      readRemote(g.presence.in);
+      // in a match: read every guest. 1 v 1 ends if they leave; in battle royale a bot takes over
+      for (let k = 0; k < net.guests.length; k++) {
+        const gid = net.guests[k];
+        if (!gid) continue;
+        const g = peers.find(p => p.peer === gid), slot = k + 1;
+        if (!g || !g.presence || g.presence.role !== 'guest' || g.presence.host !== net.me) {
+          if (mode !== 'royale') { endOnline('your friend left the game'); return; }
+          net.guests[k] = null; delete net.remote[slot];
+          if (players[slot]) { players[slot].human = false; inputs[slot] = blankInput(); }
+          setPres({ guests: net.guests });
+          continue;
+        }
+        readRemote(slot, g.presence.in);
+      }
       publishSnapshot();
     } else {
       const h = peers.find(p => p.peer === net.peer);
       const hp = h && h.presence;
-      if (!hp || hp.role !== 'host') { endOnline(state === 'menu' ? 'that game closed' : 'the host left the game', state === 'menu' ? 'lobby' : 'title'); return; }
+      const retry = () => { leaveOnline(); quickPlay(); };
+      if (!hp || hp.role !== 'host') {
+        if (state === 'menu' && net.quick) return retry();
+        endOnline(state === 'menu' ? 'that game closed' : 'the host left the game', state === 'menu' ? 'lobby' : 'title'); return;
+      }
+      const list = Array.isArray(hp.guests) ? hp.guests : [];
+      const k = list.indexOf(net.me);
       if (state === 'menu') {
-        if (hp.guest && hp.guest !== net.me) { endOnline('that game just filled up', 'lobby'); return; }
-        if (hp.guest === net.me && hp.s) beginGuest(hp.mode);
+        if (k < 0 && hp.open !== true) { if (net.quick) return retry(); endOnline('that game already started', 'lobby'); return; }
+        net.lobbyN = guestCount(hp); net.lobbyT = num(hp.lobbyT);
+        if (k >= 0 && hp.s && hp.open !== true) { net.slot = k + 1; beginGuest(hp.mode); }
         else return;
       }
-      if (hp.guest !== net.me) { endOnline('the host left the game'); return; }
+      if (k < 0) { endOnline('the host left the game'); return; }
+      net.slot = k + 1;
       if (hp.s && hp.s !== net.lastS) { net.lastS = hp.s; applySnapshot(hp.s); }
       const i = net.localIn || blankInput();
       setPres({ in: { mx: r2(i.mx), my: r2(i.my), b: i.block ? 1 : 0, f: i.fire ? 1 : 0, a: i.aim ? 1 : 0, fx: i.aim ? r2(i.aim.fx) : 0, fy: i.aim ? r2(i.aim.fy) : 0,
@@ -1200,14 +1315,15 @@
     }
   }
 
-  function readRemote(i) {
-    if (!i || typeof i !== 'object') { net.remoteIn = blankInput(); return; }
+  function readRemote(slot, i) {
+    const R = net.remote[slot] = net.remote[slot] || { seen: null, in: blankInput() };
+    if (!i || typeof i !== 'object') { R.in = blankInput(); return; }
     let aim = null;
     if (i.a) { const l = Math.hypot(num(i.fx), num(i.fy)); if (l > 0.1) aim = { fx: num(i.fx) / l, fy: num(i.fy) / l }; }
-    net.remoteIn = { mx: clamp(num(i.mx), -1, 1), my: clamp(num(i.my), -1, 1), block: !!i.b, fire: !!i.f, aim };
+    R.in = { mx: clamp(num(i.mx), -1, 1), my: clamp(num(i.my), -1, 1), block: !!i.b, fire: !!i.f, aim };
     const c = { punch: num(i.p) | 0, kick: num(i.k) | 0, dash: num(i.d) | 0 };
-    if (!net.seen) { net.seen = c; return; }
-    for (const a in c) { if (c[a] > net.seen[a] && state === 'play') act(players[1], a); net.seen[a] = c[a]; }
+    if (!R.seen) { R.seen = c; return; }
+    for (const a in c) { if (c[a] > R.seen[a] && state === 'play' && players[slot]) act(players[slot], a); R.seen[a] = c[a]; }
   }
 
   function snapshot() {
@@ -1224,7 +1340,8 @@
         f2(e.swingT), f2(e.armT), f2(e.appear), e.dashing > 0 ? 1 : 0, f2(e.ux), f2(e.uy), f1(e.burstT), f2(e.flash), e.shieldUp ? 1 : 0, e.aiming ? 1 : 0]),
       pr: projs.map(p => [r(p.x), r(p.y), p.mine ? 1 : 0, TYPE_KEYS.indexOf(p.t), p.size, p.star ? 1 : 0]),
       rb: mode === 'royale' ? [mapSeed, r(storm.x), r(storm.y), r(storm.r), f1(storm.t), royaleDuos ? 1 : 0, royaleTotal, place, killer,
-        (players[0] && players[0].killedBy) || '', (players[1] && players[1].killedBy) || ''] : null,
+        players.slice(0, humanCount()).map(p => p.killedBy || '')] : null,
+      hc: humanCount(),
       fd: mode === 'royale' ? feed.slice(0, 4).map(fd => [fd.txt, fd.col, fd.me ? 1 : 0, f1(fd.t)]) : null,
       pk: pickups.map(k => [r(k.x), r(k.y), f1(k.life), k.kind === 'gun' ? 1 : 0, GUN_KEYS.indexOf(k.gt)]),
       sh: shots.map(b => [r(b.x), r(b.y), b.owner, r(b.vx / 10), r(b.vy / 10), GUN_KEYS.indexOf(b.gt)]),
@@ -1250,6 +1367,7 @@
     score = num(s.sc); wave = num(s.wv); combo = num(s.cb); comboT = num(s.ct); shake = Math.max(shake, num(s.sh));
     banner = Array.isArray(s.bn) ? { txt: String(s.bn[0]).slice(0, 40), sub: String(s.bn[1]).slice(0, 60), t: num(s.bn[2]), col: hex(s.bn[3], '') } : null;
     round = num(s.rd); rstate = ['intro', 'fight', 'ko'].includes(s.rs) ? s.rs : 'fight'; roundClock = num(s.rc); matchWinner = clamp(num(s.mw), -1, 1);
+    net.hc = clamp(num(s.hc) || 2, 1, 32);
     if (Array.isArray(s.rb) && mode === 'royale') {
       const v = s.rb;
       if (num(v[0]) !== mapSeed) { mapSeed = num(v[0]); buildMap(mapSeed); }
@@ -1266,8 +1384,9 @@
       const v = a.map(num);
       if (mode === 'royale') {
         f.team = v[29]; f.knocked = !!v[30]; f.reviveT = v[31]; f.kills = v[32]; f.kickCD = v[33]; f.place = v[34];
-        if (i < 2) f.killedBy = String((s.rb || [])[9 + i] || '').slice(0, 20);
-        f.col = royaleCol(i, f.team); f.name = royaleName(i, f.team); f.human = i < 2;
+        const kb = Array.isArray((s.rb || [])[9]) ? s.rb[9] : [];
+        f.killedBy = String(kb[i] || '').slice(0, 20);
+        f.col = royaleCol(i, f.team); f.name = royaleName(i, f.team); f.human = i < net.hc;
       }
       f.tx = v[0]; f.ty = v[1]; f.fx = v[2]; f.fy = v[3]; f.hp = v[4]; f.max = v[5] || f.max; f.lag = v[6];
       const kind = ATK_KEYS[v[7]];
@@ -1519,7 +1638,8 @@
     if (noteT > 0) noteT -= dt;
     shake = Math.max(0, shake - 40 * dt);
     updateFx(dt);
-    netTick();
+    netTick(dt);
+    if (state === 'menu' && screen === 'finding') findRoom(dt);
     if (net.role === 'guest') { if (state !== 'menu') guestUpdate(dt); return; }
     if (state !== 'play' || (paused && !net.role)) return;
     if (hitstop > 0) { hitstop -= dt; return; }
@@ -1862,7 +1982,7 @@
     return best || { x: AW / 2, y: AH / 2 };
   }
   const royaleCol = (i, team) => team === 0 ? (i === 0 ? C.p1 : '#ffd08a') : (net.role && i === 1) ? C.p2 : BOT_COLS[(team - 1) % BOT_COLS.length];
-  const royaleName = (i, team) => net.role ? (i < 2 ? 'P' + (i + 1) : 'lol#' + (i + 1)) : i === 0 ? 'you' : team === 0 ? 'buddy' : 'lol#' + (i + 1);
+  const royaleName = (i, team) => net.role ? (i < humanCount() ? 'P' + (i + 1) : 'lol#' + (i + 1)) : i === 0 ? 'you' : team === 0 ? 'buddy' : 'lol#' + (i + 1);
   const audible = (x, y) => mode !== 'royale' || Math.hypot(x - (cam.x + W / 2), y - (cam.y + H / 2)) < 700;
   function updateRoyale(dt) {
     storm.t += dt;
@@ -2411,7 +2531,7 @@
       drawLol(f.x, f.y, PS, col, fighterPose(f), { upper: f.hurtT > 0 || f.stun > 0 || f.broken > 0, rot: f.flying ? f.spin : ang + Math.PI / 2 });
       ctx.restore();
     }
-    const mine = net.role && f.i === (net.role === 'host' ? 0 : 1);
+    const mine = net.role && f === localMe();
     if (mode === 'royale') {
       ctx.textAlign = 'center';
       if (f.human || (royaleDuos && f.team === localMe().team)) txt(f === localMe() ? 'you' : f.name, f.x, f.y - 30, 10, f.col, PIX, 700);
@@ -2676,7 +2796,8 @@
       drawLol(W / 2 + 42 + e1 * 6, cy, PS, C.p2, p2, { rot: -Math.PI / 2 });
       ctx.restore();
     } else {
-      const heading = screen === 'br' ? 'BATTLE ROYALE' : screen === 'where' ? MODE_NAME[pendingMode] : 'ONLINE ' + MODE_NAME[net.mode];
+      const heading = screen === 'br' ? 'BATTLE ROYALE' : screen === 'where' ? MODE_NAME[pendingMode]
+        : screen === 'code' || screen === 'finding' ? 'JOIN A ROOM' : 'ONLINE ' + MODE_NAME[net.mode];
       txt(heading, W / 2, L[0].y - 130, W < 700 ? 30 : 40, C.p1, PIX, 700);
       let msg = [];
       if (screen === 'where') msg = ['how are you playing?'];
@@ -2685,15 +2806,24 @@
         if (!net.room && net.p2p === 'failed') msg = ['could not reach the online network', 'check your connection, then try again'];
         else if (!net.room) msg = ['connecting to other players...'];
         else if (!net.room.connected()) msg = ['connecting...'];
-        else if (!openHosts().length) msg = ['no open games yet · QUICK PLAY starts one', 'when your friend taps QUICK PLAY they drop straight in'];
-        else msg = ['QUICK PLAY jumps into the first open game'];
-      } else if (screen === 'hosting') msg = ['looking for a game' + '.'.repeat(1 + (Math.floor(clock * 2) % 3))];
-      else if (screen === 'joining') msg = ['joining' + '.'.repeat(1 + (Math.floor(clock * 2) % 3))];
+        else msg = ['QUICK PLAY finds players for you', 'or make a room and send friends the code'];
+      } else if (screen === 'hosting') {
+        const n = 1 + net.guests.length, big = isRoyaleNet(net.mode);
+        if (net.code) msg = ['your room code · share it with friends', '', '', big ? n + ' / 16 players in the room' : ''];
+        else msg = ['searching for players' + '.'.repeat(1 + (Math.floor(clock * 2) % 3))].concat(big ? [n + ' / 16 players · starting in ' + Math.max(0, Math.ceil(net.lobbyT)) + 's'] : []);
+      } else if (screen === 'joining') {
+        const big = isRoyaleNet(net.mode), inLobby = net.lobbyN > 0;
+        if (net.quick && !inLobby) msg = ['searching for players' + '.'.repeat(1 + (Math.floor(clock * 2) % 3))];
+        else if (big && inLobby) msg = [(net.lobbyN + 1) + ' / 16 players in the lobby', net.lobbyT > 0 ? 'starting in ' + Math.ceil(net.lobbyT) + 's' : 'waiting for the host to start'];
+        else msg = ['joining room' + '.'.repeat(1 + (Math.floor(clock * 2) % 3))];
+      } else if (screen === 'code') msg = ['type your friend\'s 4-letter room code'];
+      else if (screen === 'finding') msg = ['looking for room ' + codeWant + '.'.repeat(1 + (Math.floor(clock * 2) % 3))];
       if (screen === 'lobby' && net.room && net.room.connected()) {
         const others = net.room.peers().filter(p => !p.sameTab).length;
         msg.push(others ? others + ' other player' + (others > 1 ? 's' : '') + ' online right now' : 'nobody else is online yet · send a friend the link');
       }
       msg.forEach((m, i) => txt(m, W / 2, L[0].y - 86 + i * 18, 13, C.dim, MONO, 500));
+      if (screen === 'hosting' && net.code) txt(net.code, W / 2, L[0].y - 50, 40, C.p1, PIX, 700);
     }
     L.forEach((it, i) => drawButton(it.y, BW(), BH(), it.label, it.sub, i === sel, it.off || it.label === 'BACK' || it.label === 'CANCEL' ? C.dim : C.p1, it.off));
     const hy = L[L.length - 1].y + 50;
@@ -2715,6 +2845,7 @@
     last = now;
     processPads();
     computeInputs();
+    syncCodeInput();
     if (isTouch) syncTouchUi();
     update(dt);
     render();

@@ -39,7 +39,7 @@ On phones you get a touch joystick and buttons. Local two-player needs a control
 
 ## Playing it
 
-- **Anyone, anywhere:** open the GitHub Pages link (or `index.html`). Everything works there, including **online play**: pick an online mode and press **QUICK PLAY**. Players connect straight to each other (WebRTC, found through [Trystero](https://github.com/dmotz/trystero)'s public Nostr relays), so there are no accounts and no server. Send a friend the link and you'll find each other.
+- **Anyone, anywhere:** open the GitHub Pages link (or `index.html`). Everything works there, including **online play**: pick an online mode and press **QUICK PLAY** to search for players, or **CREATE ROOM** and send friends the 4-letter code (they use **JOIN ROOM**). Online battle royale fills a lobby of up to 16 real players for 20 seconds, then starts and bots take the empty spots. Players connect straight to each other (WebRTC, found through [Trystero](https://github.com/dmotz/trystero)'s public Nostr relays), so there are no accounts and no server. Send a friend the link and you'll find each other.
 - **On claude.ai (as a Claude artifact):** the same game. Online play uses the artifact's live room, and there's a shared **leaderboard** stored in the artifact's database. The leaderboard only exists on claude.ai.
 
 Online play is peer to peer, so a very strict school or work network can occasionally block the connection.
