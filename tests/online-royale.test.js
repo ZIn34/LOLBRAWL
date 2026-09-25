@@ -8,7 +8,7 @@ function makeRoom(me) {
   pres[me] = {};
   return {
     presence(patch) { const o = Object.assign({}, pres[me]); for (const k in patch) { if (patch[k] === null) delete o[k]; else o[k] = JSON.parse(JSON.stringify(patch[k])); } pres[me] = o; return Promise.resolve(); },
-    peers() { return Object.keys(pres).map(p => ({ peer: p, isMe: p === me, sameTab: p === me, kind: 'viewer', guest: false, by: null, presence: pres[p], updatedAt: 0 })); },
+    peers() { return Object.keys(pres).map(p => ({ peer: p, isMe: true, sameTab: p === me, kind: 'viewer', guest: false, by: null, presence: pres[p], updatedAt: 0 })); },
     connected: () => true,
   };
 }

@@ -9,6 +9,7 @@ echo "== local modes";        node modes.test.js
 echo "== online co-op/versus"; node online.test.js
 echo "== battle royale solo";  node royale.test.js solo | tail -2
 echo "== battle royale duos";  node royale.test.js duos | tail -2
+echo "== online without claude"; node online-p2p.test.js
 echo "== online royale solo";  node online-royale.test.js solo | tail -3
 echo "== online royale duos";  node online-royale.test.js duos | tail -3
 echo "== leaderboard";          node leaderboard.test.js | tail -1

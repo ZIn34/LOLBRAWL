@@ -39,11 +39,13 @@ On phones you get a touch joystick and buttons. Local two-player needs a control
 
 ## Playing it
 
-- **In a browser:** open `index.html`, or the GitHub Pages link if it's turned on. Solo, local co-op and versus, and battle royale against bots all work there.
-- **On claude.ai (as a Claude artifact):** everything above, plus **online play** (co-op, versus and battle royale via Quick Play) and a shared **leaderboard**. Those two use the artifact's live room and database, which only exist on claude.ai.
+- **Anyone, anywhere:** open the GitHub Pages link (or `index.html`). Everything works there, including **online play**: pick an online mode and press **QUICK PLAY**. Players connect straight to each other (WebRTC, found through [Trystero](https://github.com/dmotz/trystero)'s public Nostr relays), so there are no accounts and no server. Send a friend the link and you'll find each other.
+- **On claude.ai (as a Claude artifact):** the same game. Online play uses the artifact's live room, and there's a shared **leaderboard** stored in the artifact's database. The leaderboard only exists on claude.ai.
+
+Online play is peer to peer, so a very strict school or work network can occasionally block the connection.
 
 ## Editing
 
 - `lolbrawl.html` is the source. It's written for Claude artifacts, so it has no `<!doctype>`/`<head>` of its own.
 - After editing it, run `bash build.sh` to regenerate `index.html`, the standalone copy.
-- `bash tests/run.sh` runs the game headlessly with fake canvas, input, room and database stubs. It covers every mode, the online sync between a simulated host and guest, and the leaderboard. You need [Node.js](https://nodejs.org).
+- `bash tests/run.sh` runs the game headlessly with fake canvas, input, room and database stubs. It covers every mode, online sync between a simulated host and guest (claude.ai room and peer to peer), and the leaderboard. You need [Node.js](https://nodejs.org).

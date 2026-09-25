@@ -868,7 +868,7 @@
   const isRoyaleNet = m => m === 'royale' || m === 'royale1';
   function openHosts() {
     if (!net.room) return [];
-    return net.room.peers().filter(p => !p.isMe && p.presence && p.presence.role === 'host' && p.presence.open === true && p.presence.mode === net.mode).slice(0, 3);
+    return net.room.peers().filter(p => !p.sameTab && p.presence && p.presence.role === 'host' && p.presence.open === true && p.presence.mode === net.mode).slice(0, 3);
   }
   const tag = peer => 'lol#' + String(peer).slice(0, 4);
   function menuItems() {
@@ -915,7 +915,7 @@
     if (screen === 'hosting' || screen === 'joining') return [{ label: 'CANCEL', go: () => { leaveOnline(); setScreen('lobby'); } }];
     return [];
   }
-  function setScreen(s) { screen = s; sel = 0; }
+  function setScreen(s) { screen = s; sel = 0; if (s === 'lobby') ensureOnline(); }
   function menuMove(d) { const n = menuItems().length; if (n) sel = (sel + d + n) % n; play('menu'); }
   function menuSelect() { const it = menuItems()[sel]; if (it) { play('select'); it.go(); } }
   function menuBack() {
@@ -1061,7 +1061,13 @@
     else if (myRank < 0) txt('your best games will show up here', W / 2, noteY, 12, C.dim, MONO, 500);
   }
 
-  // ---------- online (the room capability) ----------
+  // ---------- online ----------
+  // On claude.ai the artifact's live room carries online play. Anywhere else (GitHub Pages, a
+  // downloaded copy) players connect straight to each other over WebRTC, found through Trystero's
+  // public Nostr relays, so no server or account is needed. Both look the same to the game:
+  // presence(patch), peers() and connected(), like the claude.ai room.
+  const TRYSTERO_URL = 'https://cdn.jsdelivr.net/npm/trystero@0.25.4/+esm';
+  net.p2p = 'idle'; // idle | loading | ready | failed
   (async () => {
     try {
       if (window.claude && typeof window.claude.use === 'function') {
@@ -1071,6 +1077,64 @@
     } catch (e) {}
     net.checked = true;
   })();
+  // only reach for the network once someone opens an online lobby
+  async function ensureOnline() {
+    if (net.room || net.p2p === 'loading' || net.p2p === 'ready') return;
+    if (!net.checked) { setTimeout(ensureOnline, 300); return; }
+    net.p2p = 'loading';
+    try {
+      const T = window.__trystero || await import(TRYSTERO_URL);
+      net.room = p2pRoom(T);
+      net.p2p = 'ready';
+    } catch (e) { net.p2p = 'failed'; }
+  }
+  function p2pRoom(T) {
+    const room = T.joinRoom({ appId: 'lolbrawl-zin34-v1' }, 'lobby');
+    const light = room.makeAction('pres'), heavy = room.makeAction('game');
+    const HEAVY = ['s', 'in'];
+    const others = new Map();
+    let mine = {}, dirtyHeavy = false, since = 0;
+    const lightOf = o => { const c = {}; for (const k in o) if (!HEAVY.includes(k)) c[k] = o[k]; return c; };
+    const got = (id, data, isHeavy) => {
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+      const cur = (others.get(id) || { presence: {} }).presence;
+      let p;
+      if (isHeavy) { p = Object.assign({}, cur); for (const k of HEAVY) if (k in data) { if (data[k] === null) delete p[k]; else p[k] = data[k]; } }
+      else { p = Object.assign({}, data); for (const k of HEAVY) if (k in cur) p[k] = cur[k]; }
+      others.set(id, { presence: p });
+    };
+    room.onPeerJoin = id => { if (!others.has(id)) others.set(id, { presence: {} }); light.send(lightOf(mine), { target: id }); };
+    room.onPeerLeave = id => { others.delete(id); };
+    light.onMessage = (data, meta) => got(meta && meta.peerId, data, false);
+    heavy.onMessage = (data, meta) => got(meta && meta.peerId, data, true);
+    // game snapshots and inputs only go to your partner, about 30 times a second
+    const flush = () => {
+      if (!dirtyHeavy || !net.peer || !others.has(net.peer)) return;
+      dirtyHeavy = false; since = performance.now();
+      const h = {};
+      for (const k of HEAVY) h[k] = k in mine ? mine[k] : null;
+      heavy.send(h, { target: net.peer });
+    };
+    setInterval(flush, 33);
+    return {
+      presence(patch) {
+        let lightChanged = false;
+        for (const k in patch) {
+          if (patch[k] === null) delete mine[k]; else mine[k] = patch[k];
+          if (HEAVY.includes(k)) dirtyHeavy = true; else lightChanged = true;
+        }
+        if (lightChanged) light.send(lightOf(mine));
+        if (dirtyHeavy && performance.now() - since > 33) flush();
+        return Promise.resolve();
+      },
+      peers() {
+        const list = [{ peer: T.selfId, isMe: true, sameTab: true, presence: mine }];
+        for (const [peer, o] of others) list.push({ peer, isMe: false, sameTab: false, presence: o.presence });
+        return list;
+      },
+      connected: () => true
+    };
+  }
   function setPres(patch) { if (net.room) net.room.presence(patch).catch(() => {}); }
   const PRES_RESET = { role: null, mode: null, open: null, guest: null, s: null, host: null, in: null };
   function hostGame() {
@@ -1110,7 +1174,7 @@
     if (!net.me) return;
     if (net.role === 'host') {
       if (state === 'menu') {
-        const j = peers.find(p => !p.isMe && p.presence && p.presence.role === 'guest' && p.presence.host === net.me);
+        const j = peers.find(p => !p.sameTab && p.presence && p.presence.role === 'guest' && p.presence.host === net.me);
         if (j) {
           net.peer = j.peer; setPres({ open: false, guest: j.peer });
           if (isRoyaleNet(net.mode)) royaleDuos = net.mode === 'royale';
@@ -2621,8 +2685,8 @@
       if (screen === 'where') msg = ['how are you playing?'];
       else if (screen === 'br') msg = ['on your own, or with a buddy?'];
       else if (screen === 'lobby') {
-        if (!net.checked) msg = ['connecting...'];
-        else if (!net.room) msg = ['online play needs this page open on claude.ai,', 'shared with your friend so you can both open it'];
+        if (!net.room && net.p2p === 'failed') msg = ['could not reach the online network', 'check your connection, then try again'];
+        else if (!net.room) msg = ['connecting to other players...'];
         else if (!net.room.connected()) msg = ['connecting...'];
         else if (!openHosts().length) msg = ['no open games yet · QUICK PLAY starts one', 'when your friend taps QUICK PLAY they drop straight in'];
         else msg = ['QUICK PLAY jumps into the first open game'];
@@ -2630,6 +2694,10 @@
         isRoyaleNet(net.mode) ? 'they open this same page, pick BATTLE ROYALE > ' + (net.mode === 'royale' ? 'DUOS' : 'SOLO') + ' ONLINE > QUICK PLAY'
           : 'they open this same page, pick ' + MODE_NAME[net.mode] + ' > ONLINE > QUICK PLAY'];
       else if (screen === 'joining') msg = ['joining' + '.'.repeat(1 + (Math.floor(clock * 2) % 3))];
+      if ((screen === 'lobby' || screen === 'hosting') && net.room && net.room.connected()) {
+        const others = net.room.peers().filter(p => !p.sameTab).length;
+        msg.push(others ? others + ' other player' + (others > 1 ? 's' : '') + ' online right now' : 'nobody else is online yet · send a friend the link');
+      }
       msg.forEach((m, i) => txt(m, W / 2, L[0].y - 86 + i * 18, 13, C.dim, MONO, 500));
     }
     L.forEach((it, i) => drawButton(it.y, BW(), BH(), it.label, it.sub, i === sel, it.off || it.label === 'BACK' || it.label === 'CANCEL' ? C.dim : C.p1, it.off));
