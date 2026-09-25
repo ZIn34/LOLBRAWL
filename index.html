@@ -2687,11 +2687,9 @@
         else if (!net.room.connected()) msg = ['connecting...'];
         else if (!openHosts().length) msg = ['no open games yet · QUICK PLAY starts one', 'when your friend taps QUICK PLAY they drop straight in'];
         else msg = ['QUICK PLAY jumps into the first open game'];
-      } else if (screen === 'hosting') msg = ['waiting for a friend' + '.'.repeat(1 + (Math.floor(clock * 2) % 3)),
-        isRoyaleNet(net.mode) ? 'they open this same page, pick BATTLE ROYALE > ' + (net.mode === 'royale' ? 'DUOS' : 'SOLO') + ' ONLINE > QUICK PLAY'
-          : 'they open this same page, pick ' + MODE_NAME[net.mode] + ' > ONLINE > QUICK PLAY'];
+      } else if (screen === 'hosting') msg = ['looking for a game' + '.'.repeat(1 + (Math.floor(clock * 2) % 3))];
       else if (screen === 'joining') msg = ['joining' + '.'.repeat(1 + (Math.floor(clock * 2) % 3))];
-      if ((screen === 'lobby' || screen === 'hosting') && net.room && net.room.connected()) {
+      if (screen === 'lobby' && net.room && net.room.connected()) {
         const others = net.room.peers().filter(p => !p.sameTab).length;
         msg.push(others ? others + ' other player' + (others > 1 ? 's' : '') + ' online right now' : 'nobody else is online yet · send a friend the link');
       }
