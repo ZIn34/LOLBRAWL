@@ -1,0 +1,14 @@
+{
+  "name": "LOLbrawl",
+  "short_name": "LOLbrawl",
+  "description": "A text brawler where every fighter is the word lol.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#110f1c",
+  "theme_color": "#110f1c",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

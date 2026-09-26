@@ -35,7 +35,7 @@ Everything is drawn with text on a canvas: `#` walls and rocks, `~` water and th
 | Pause | Tab | Start |
 | Sound on/off | M | |
 
-On phones you get a touch joystick and buttons. Local two-player needs a controller for P2.
+On phones you get a touch joystick and buttons. Local two-player needs a controller for P2. On the GitHub Pages copy you can also use **Add to Home Screen** to get the LOLbrawl app icon and play full screen.
 
 ## Playing it
 
@@ -50,4 +50,5 @@ Online play is peer to peer, so a very strict school or work network can occasio
 
 - `lolbrawl.html` is the source. It's written for Claude artifacts, so it has no `<!doctype>`/`<head>` of its own.
 - After editing it, run `bash build.sh` to regenerate the standalone copies: `index.html` (GitHub Pages / itch.io) and `crazygames/index.html`.
+- `python tools/make_icons.py` redraws the app icons in `icons/` (needs Pillow).
 - `bash tests/run.sh` runs the game headlessly with fake canvas, input, room and database stubs. It covers every mode, online sync between a simulated host and guest (claude.ai room and peer to peer), and the leaderboard. You need [Node.js](https://nodejs.org).
