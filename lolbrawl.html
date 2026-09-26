@@ -2188,8 +2188,8 @@
   function botThink(f, dt) {
     const inp = inputs[f.i] = inputs[f.i] || blankInput();
     const ai = f.ai = f.ai || { t: rand(0, 0.3), target: null, goal: null, blockT: 0, atkCD: rand(0.5, 1.5), wp: null, wpT: 0,
-                                 strafe: Math.random() < 0.5 ? 1 : -1, skill: rand(0.3, 0.75) };
-    ai.t -= dt; ai.blockT -= dt; ai.atkCD -= dt; ai.wpT -= dt;
+                                 strafe: Math.random() < 0.5 ? 1 : -1, skill: rand(0.3, 0.75), fleeT: 0, fleeCD: 0 };
+    ai.t -= dt; ai.blockT -= dt; ai.atkCD -= dt; ai.wpT -= dt; ai.fleeT -= dt; ai.fleeCD -= dt;
     const calm = storm.t < 2.5; // everyone gets a moment to spread out
     const o0 = ai.target;
     if (ai.t <= 0 || !o0 || o0.dead) {
@@ -2226,6 +2226,12 @@
     // early on bots mind their own business unless someone is right there
     const engage = storm.t < 40 ? 240 : storm.t < 80 ? 340 : 460;
     const far = !o || Math.hypot(o.x - f.x, o.y - f.y) > engage || calm;
+    // hurt and outmatched: back off for a moment now and then, but never for good
+    if (o && ai.fleeT <= 0 && ai.fleeCD <= 0 && f.hp < 30 && o.hp > f.hp + 25) {
+      ai.fleeCD = rand(5, 9);
+      if (Math.random() < 0.4) ai.fleeT = rand(0.8, 1.6);
+    }
+    if (o && ai.fleeT > 0 && Math.hypot(o.x - f.x, o.y - f.y) < 60) ai.fleeT = 0;
     const mate = ai.mate && !ai.mate.dead ? ai.mate : null;
     const mateD = mate ? Math.hypot(mate.x - f.x, mate.y - f.y) : 0;
     const toMate = () => { mx = (mate.x - f.x) / (mateD || 1); my = (mate.y - f.y) / (mateD || 1); };
@@ -2249,7 +2255,7 @@
       if (f.gun > 0) {
         const radial = d > 270 ? 1 : d < 170 ? -1 : 0;
         mx = ux * radial - uy * ai.strafe * 0.8; my = uy * radial + ux * ai.strafe * 0.8;
-      } else if (f.hp < 25 && o.hp > f.hp + 25) { mx = -ux - uy * ai.strafe * 0.5; my = -uy + ux * ai.strafe * 0.5; }
+      } else if (ai.fleeT > 0) { mx = -ux - uy * ai.strafe * 0.5; my = -uy + ux * ai.strafe * 0.5; }
       else if (d > 40) { mx = ux; my = uy; }
       else { mx = -uy * ai.strafe * 0.4; my = ux * ai.strafe * 0.4; }
     }
