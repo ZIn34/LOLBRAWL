@@ -15,3 +15,4 @@ echo "== online royale solo";  node online-royale.test.js solo | tail -3
 echo "== online royale duos";  node online-royale.test.js duos | tail -3
 echo "== leaderboard";          node leaderboard.test.js | tail -1
 echo "== crazygames build";      node crazygames.test.js
+echo "== vs ai";                 node vs-ai.test.js | tail -1

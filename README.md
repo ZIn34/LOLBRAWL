@@ -8,7 +8,7 @@ Everything is drawn with text on a canvas: `#` walls and rocks, `~` water and th
 
 - **Solo:** waves of angry lols, including fast ones, big ones, ones that throw their own arm, shield lols, gunner lols, and a HUGE LOL boss every 5th wave.
 - **Co-op:** two lols against the horde, on one screen or online.
-- **Versus:** lol vs lol, best of 3 rounds, on one screen or online.
+- **Versus:** lol vs lol, best of 3 rounds, on one screen, online, or **VS AI** against a computer lol (easy, normal or hard; hard blocks, parries and punishes mistakes).
 - **Battle royale:** 16 lols on a big scrolling map with rocks for cover and a closing storm. You can play solo or in duos with knock and revive, against bots or online with a friend.
 
 ## Fighting
