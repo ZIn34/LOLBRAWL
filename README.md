@@ -42,10 +42,12 @@ On phones you get a touch joystick and buttons. Local two-player needs a control
 - **Anyone, anywhere:** open the GitHub Pages link (or `index.html`). Everything works there, including **online play**: pick an online mode and press **QUICK PLAY** to search for players, or **CREATE ROOM** and send friends the 4-letter code (they use **JOIN ROOM**). Online battle royale fills a lobby of up to 16 real players for 20 seconds, then starts and bots take the empty spots. Players connect straight to each other (WebRTC, found through [Trystero](https://github.com/dmotz/trystero)'s public Nostr relays), so there are no accounts and no server. Send a friend the link and you'll find each other.
 - **On claude.ai (as a Claude artifact):** the same game. Online play uses the artifact's live room, and there's a shared **leaderboard** stored in the artifact's database. The leaderboard only exists on claude.ai.
 
+- **On CrazyGames:** upload the `crazygames/` folder (zip `crazygames/index.html`). That copy loads the CrazyGames SDK and adds a **SKINS** menu: 8 looks for your lol (gold, neon, rainbow, ghost, fire, shouting LOL, ink), each unlocked by an optional rewarded ad, one ad per skin, with a 90-second wait between unlocks. It also shows a midgame ad between offline games, pauses and mutes during ads, respects CrazyGames' mute setting, reports gameplay start/stop, and saves with their cloud save. Skins you wear show up for other players online on every version.
+
 Online play is peer to peer, so a very strict school or work network can occasionally block the connection.
 
 ## Editing
 
 - `lolbrawl.html` is the source. It's written for Claude artifacts, so it has no `<!doctype>`/`<head>` of its own.
-- After editing it, run `bash build.sh` to regenerate `index.html`, the standalone copy.
+- After editing it, run `bash build.sh` to regenerate the standalone copies: `index.html` (GitHub Pages / itch.io) and `crazygames/index.html`.
 - `bash tests/run.sh` runs the game headlessly with fake canvas, input, room and database stubs. It covers every mode, online sync between a simulated host and guest (claude.ai room and peer to peer), and the leaderboard. You need [Node.js](https://nodejs.org).
