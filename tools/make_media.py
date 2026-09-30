@@ -1,16 +1,19 @@
 """Turns the recorded demo footage into marketing media, all written to release/:
 
-  lolbrawl-short.mp4   YouTube Short, vertical 1080x1920, ~40 s, captions + the fight zoomed in
+  lolbrawl-short.mp4   YouTube Short, vertical 1080x1920, ~30 s: title, then SOLO / CO-OP / VERSUS / BATTLE ROYALE
+                       footage with the game's own sound effects over a chiptune track
   lolbrawl.gif         looping gameplay GIF (640x400) for itch.io / socials
   itch-cover.png       630x500 itch.io cover image
   icon.ico             Windows icon for the desktop .exe (also copied to desktop/)
 
-Record the footage first (from desktop/):
-  electron record.js ../release/frames/versus 24 30 4 versus 1920 1200
-  electron record.js ../release/frames/royale 24 30 20 royale 1920 1200
+Record the footage first (from desktop/), slowed to 0.35x so every frame is captured:
+  electron record.js ../release/frames/solo 12 30 6 solo 1920 1200 0.35
+  electron record.js ../release/frames/coop 12 30 6 coop 1920 1200 0.35
+  electron record.js ../release/frames/versus 14 30 4 versus 1920 1200 0.35
+  electron record.js ../release/frames/royale 14 30 20 royale 1920 1200 0.35
 Needs Pillow, numpy and imageio-ffmpeg; fonts are fetched into release/fonts (Silkscreen, JetBrains Mono, both OFL).
 """
-import glob, os, shutil, subprocess
+import bisect, glob, json, os, shutil, subprocess
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import imageio_ffmpeg
@@ -88,62 +91,86 @@ def logo(d, base, y, size, W):
 
 
 # ---------- YouTube Short ----------
+def clip_data(name):
+    files, _ = clip(name)
+    d = os.path.join(FR, name)
+    clocks = json.load(open(os.path.join(d, 'clocks.json')))
+    sounds = json.load(open(os.path.join(d, 'sounds.json')))
+    return files, clocks, sounds
+
+
+def frame_at(clocks, t):
+    """Index of the recorded frame closest to game time t."""
+    i = bisect.bisect_left(clocks, t)
+    if i <= 0: return 0
+    if i >= len(clocks): return len(clocks) - 1
+    return i if clocks[i] - t < t - clocks[i - 1] else i - 1
+
+
 def make_short():
-    W, H, PANEL, PY = 1080, 1920, 1080, 420
-    vs, vfps = clip('versus'); ro, rfps = clip('royale')
-    fps = round((vfps + rfps) / 2)
-    vboxes = tracked_boxes(vs, 660, 660)
-    # (clip, start s, end s, caption lines)
+    W, H, PANEL, PY, FPS = 1080, 1920, 1080, 420, 30
+    # (clip, game-time window from the clip's first frame, big caption, small caption)
     plan = [
-        ('versus', 0, 5, ['every fighter', 'is the word lol']),
-        ('versus', 5, 11, ['grab a gun', 'bullets are *']),
-        ('versus', 11, 18, ['best of 3', 'K.O. them']),
-        ('versus', 20, 26, ['block right before', 'a hit = PARRY']),
-        ('royale', 1, 7, ['16-lol', 'battle royale']),
-        ('royale', 7, 13, ['last lol', 'standing wins']),
+        ('solo', 0.0, 2.5, None, 'every fighter is the word lol'),
+        ('solo', 2.5, 8.0, 'SOLO', 'waves of angry lols'),
+        ('coop', 2.0, 7.5, 'CO-OP', 'team up with a friend'),
+        ('versus', 3.0, 9.0, 'VERSUS', '1v1 · online or vs AI'),
+        ('royale', 2.0, 9.0, 'BATTLE ROYALE', '16 lols. one survives.'),
     ]
+    data = {n: clip_data(n) for n in {p[0] for p in plan}}
+    boxes = {n: tracked_boxes(data[n][0], 760, 760) for n in data if n != 'royale'}
     out = os.path.join(REL, 'short_frames'); shutil.rmtree(out, ignore_errors=True); os.makedirs(out)
     bg = dotted(W, H)
-    fcap, fsmall, flink = font(84), font(34, False), font(46)
-    n = 0
-    for name, t0, t1, lines in plan:
-        files = vs if name == 'versus' else ro
-        cfps = vfps if name == 'versus' else rfps
-        i0, i1 = int(t0 * cfps), min(int(t1 * cfps), len(files))
-        for k in range(i0, i1):
-            fr = Image.open(files[k]).convert('RGB')
-            if name == 'versus': fr = fr.crop(vboxes[k]).resize((PANEL, PANEL), Image.LANCZOS)
+    fmode, fsub, fsmall, flink = font(104), font(42, False), font(34, False), font(46)
+    n, events, T = 0, [], 0.0
+    for name, a, b, big, sub in plan:
+        files, clocks, sounds = data[name]
+        c0 = clocks[0] + a
+        events += [[round(T + (t - c0), 3), snd] for t, snd in sounds if c0 <= t < clocks[0] + b]
+        for k in range(int((b - a) * FPS)):
+            i = frame_at(clocks, c0 + k / FPS)
+            fr = Image.open(files[i]).convert('RGB')
+            if name == 'royale':
+                w, h = fr.size; sz = 760
+                fr = fr.crop(((w - sz) // 2, (h - sz) // 2, (w + sz) // 2, (h + sz) // 2))
             else:
-                w, h = fr.size; s = 760
-                fr = fr.crop(((w - s) // 2, (h - s) // 2, (w + s) // 2, (h + s) // 2)).resize((PANEL, PANEL), Image.LANCZOS)
+                fr = fr.crop(boxes[name][i])
+            fr = fr.resize((PANEL, PANEL), Image.LANCZOS)
             im = bg.copy(); d = ImageDraw.Draw(im)
-            logo(d, im, 70, 64, W)
-            text_c(d, 200, lines[0], fcap, INK, W)
-            text_c(d, 300, lines[1], fcap, AMBER, W, glow=AMBER, base=im)
-            d = ImageDraw.Draw(im)
+            if big is None:                                  # opening title
+                logo(d, im, 150, 120, W); d = ImageDraw.Draw(im)
+                text_c(d, 318, sub, fsub, INK, W)
+            else:
+                logo(d, im, 60, 56, W); d = ImageDraw.Draw(im)
+                text_c(d, 170, big, fmode if len(big) < 10 else font(84), AMBER, W, glow=AMBER, base=im); d = ImageDraw.Draw(im)
+                text_c(d, 320, sub, fsub, INK, W)
             im.paste(fr, (0, PY))
             d.line((0, PY, W, PY), fill=(58, 52, 82), width=3); d.line((0, PY + PANEL, W, PY + PANEL), fill=(58, 52, 82), width=3)
-            text_c(d, PY + PANEL + 40, 'play free in your browser', fsmall, DIM, W)
-            text_c(d, PY + PANEL + 92, 'zin34.github.io/LOLBRAWL', flink, AMBER, W)
             im.convert('RGB').save(os.path.join(out, f'{n:05d}.png')); n += 1
-    # end card
+        T += b - a
+    # end card, with the wave-clear jingle
+    events.append([round(T + 0.1, 3), 'clear'])
     icon = Image.open(os.path.join(ROOT, 'icons', 'icon-512.png')).convert('RGBA').resize((360, 360), Image.LANCZOS)
-    for k in range(int(3.5 * fps)):
+    for k in range(int(3.5 * FPS)):
         im = bg.copy(); d = ImageDraw.Draw(im)
-        im.alpha_composite(icon, ((W - 360) // 2, 330))
-        logo(d, im, 760, 110, W); d = ImageDraw.Draw(im)
-        text_c(d, 930, 'solo · co-op · versus', font(48), INK, W)
-        text_c(d, 1000, 'battle royale · online', font(48), INK, W)
-        text_c(d, 1140, 'play free · no download', fsmall, DIM, W)
-        text_c(d, 1200, 'zin34.github.io/LOLBRAWL', font(52), AMBER, W, glow=AMBER, base=im)
+        im.alpha_composite(icon, ((W - 360) // 2, 360))
+        logo(d, im, 790, 110, W); d = ImageDraw.Draw(im)
+        text_c(d, 960, 'play free · online · on your phone', fsmall, INK, W)
+        text_c(d, 1030, 'zin34.github.io/LOLBRAWL', font(52), AMBER, W, glow=AMBER, base=im)
         im.convert('RGB').save(os.path.join(out, f'{n:05d}.png')); n += 1
+    T += 3.5
+    # sound: the game's own effects at the moments they happened, over a chiptune track
+    ev = os.path.join(REL, 'short_sounds.json'); json.dump(events, open(ev, 'w'))
+    wav = os.path.join(REL, 'short_audio.wav')
+    electron = os.path.join(ROOT, 'desktop', 'node_modules', 'electron', 'dist', 'electron.exe')
+    subprocess.run([electron, 'record.js', '--render', ev, f'{T:.2f}', wav], cwd=os.path.join(ROOT, 'desktop'), check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     mp4 = os.path.join(REL, 'lolbrawl-short.mp4')
-    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), '-y', '-loglevel', 'error', '-framerate', str(fps), '-i', os.path.join(out, '%05d.png'),
-                    '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000', '-shortest',
-                    '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30',
-                    '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', mp4], check=True)
-    print('short:', mp4, f'{n / fps:.1f}s', f'{os.path.getsize(mp4) / 1e6:.1f} MB')
-    return out
+    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), '-y', '-loglevel', 'error', '-framerate', str(FPS), '-i', os.path.join(out, '%05d.png'),
+                    '-i', wav, '-shortest', '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p',
+                    '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11',   # YouTube's loudness target
+                    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', mp4], check=True)
+    print('short:', mp4, f'{T:.1f}s', len(events), 'sounds', f'{os.path.getsize(mp4) / 1e6:.1f} MB')
 
 
 # ---------- GIF ----------
