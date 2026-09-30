@@ -1,0 +1,16 @@
+{
+  "name": "lolbrawl",
+  "productName": "LOLbrawl",
+  "version": "1.0.0",
+  "description": "A text brawler where every fighter is the word lol.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "record": "electron record.js"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.5.1"
+  }
+}

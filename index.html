@@ -121,6 +121,9 @@
   #btns button:active { border-color: var(--p1); color: var(--p1); }
   #btns .kick { border-color: var(--pink); }
   #btns .block { border-color: var(--p2); }
+  /* ?demo recordings: just the game, edge to edge */
+  body.demo { padding: 0; }
+  body.demo header, body.demo footer { display: none; }
   #roomCode {
     position: absolute; transform: translate(-50%, -50%); width: 7ch; padding: 6px 10px;
     font: 700 28px var(--pixel); letter-spacing: 0.25em; text-align: center; text-transform: uppercase;
@@ -362,6 +365,14 @@
     3: { name: 'HARD',   react: [0.12, 0.22], block: 0.8,  parry: 0.5,  rest: [0.12, 0.4], aim: 0.06, speed: 1 }
   };
   const pname = i => vsAI && i === 1 ? 'CPU' : 'P' + (i + 1);
+  // ?demo: two computer lols fight on their own (used to record trailers and GIFs)
+  // ?demo=royale: a battle royale of 16 bots, with the camera following the fighting
+  const DEMO = typeof location !== 'undefined' && /[?&]demo\b/.test(location.search) ? ((location.search.match(/demo=(\w+)/) || [])[1] || 'versus') : '';
+  let demoFocus = null, demoFocusT = 0;
+  // &speed=0.3 slows the demo down so a slow screen recorder still gets smooth frames
+  const DEMO_SPEED = DEMO ? clamp(+((location.search.match(/speed=([0-9.]+)/) || [])[1]) || 1, 0.05, 1) : 1;
+  if (DEMO) document.body.classList.add('demo');
+  function startDemo() { if (DEMO === 'royale') { royaleDuos = false; startMode('royale'); } else startVsAI(3); }
   function startVsAI(level) { vsAI = level; startMode('versus', true); }
   // keepAI: only VS AI and a rematch keep the computer opponent; every other start is people only
   function startMode(m, keepAI) {
@@ -387,7 +398,7 @@
         const a = Math.atan2(AH / 2 - spot.y, AW / 2 - spot.x);
         const p = makePlayer(i, spot.x, spot.y);
         p.team = team;
-        p.human = i === 0 || (net.role === 'host' && i <= net.guests.length && !!net.guests[i - 1]);
+        p.human = !DEMO && (i === 0 || (net.role === 'host' && i <= net.guests.length && !!net.guests[i - 1]));
         p.col = royaleCol(i, team);
         p.name = royaleName(i, team);
         p.fx = Math.cos(a); p.fy = Math.sin(a);
@@ -407,7 +418,7 @@
   function startRound() {
     players.forEach((f, i) => {
       const wins = f.wins;
-      Object.assign(f, makePlayer(i, i ? W * 0.7 : W * 0.3, H / 2), { wins, cpu: i === 1 && !!vsAI, human: !(i === 1 && vsAI) });
+      Object.assign(f, makePlayer(i, i ? W * 0.7 : W * 0.3, H / 2), { wins, cpu: (i === 1 && !!vsAI) || (DEMO && i === 0), human: !((i === 1 && vsAI) || (DEMO && i === 0)) });
     });
     projs = []; shots = []; pickups = []; gunT = 8;
     rstate = 'intro'; rtimer = 1.7; roundClock = 60;
@@ -1728,7 +1739,7 @@
       if (!teamsAlive.has(h.team)) { h.place = teamsAlive.size + 1; h.killedBy = a ? a.name : 'the storm'; }
       else if (teamsAlive.size === 1) h.place = 1;
     }
-    if (players.every(h => !h.human || h.place)) {
+    if (players.some(h => h.human) && players.every(h => !h.human || h.place)) {
       place = players[0].place; killer = players[0].killedBy;
       state = 'over'; overT = 0;
       if (players.some(h => h.human && h.place === 1)) sfx('clear');
@@ -1780,6 +1791,7 @@
     clock += dt;
     if (state === 'over') overT += dt;
     if (state === 'over' && !recorded) { recorded = true; recordResult(); cgMidgame(); }
+    if (DEMO && state === 'over' && overT > 3) startDemo();
     if (noteT > 0) noteT -= dt;
     shake = Math.max(0, shake - 40 * dt);
     updateFx(dt);
@@ -2162,7 +2174,7 @@
     const L = AI_LEVELS[vsAI] || AI_LEVELS[2];
     const inp = inputs[f.i] = inputs[f.i] || blankInput();
     const ai = f.ai = f.ai || { t: 0.5, blockT: 0, rest: 0.8, strafe: 1, strafeT: 0, goal: null };
-    const o = players[0];
+    const o = players[1 - f.i];
     inp.mx = inp.my = 0; inp.block = false; inp.fire = false;
     if (!o || rstate !== 'fight' || f.koed) return;
     ai.t -= dt; ai.blockT -= dt; ai.rest -= dt; ai.strafeT -= dt;
@@ -2571,7 +2583,19 @@
     if (state === 'menu') { drawMenu(); return; }
 
     if (bigMap) {
-      const mine = localMe(), me = mine && !mine.dead ? mine
+      if (DEMO) {
+        demoFocusT -= 1 / 60;
+        if (!demoFocus || demoFocus.dead || demoFocusT <= 0) {
+          demoFocusT = 4;
+          let bestN = -1;
+          for (const p of players) {
+            if (p.dead) continue;
+            const n = players.filter(q => q !== p && !q.dead && Math.hypot(q.x - p.x, q.y - p.y) < 350).length;
+            if (n > bestN) { bestN = n; demoFocus = p; }
+          }
+        }
+      }
+      const mine = DEMO && demoFocus ? demoFocus : localMe(), me = mine && !mine.dead ? mine
         : players.find(p => mine && p.team === mine.team && !p.dead) || players.find(p => p.human && !p.dead) || players.find(p => !p.dead);
       if (me && !me.dead) {
         cam.x += (clamp(me.x - W / 2, 0, AW - W) - cam.x) * 0.15;
@@ -2847,13 +2871,15 @@
   function drawRoyaleHud() {
     const me = localMe(), y = WALL + 22, bw = 200;
     ctx.textAlign = 'left';
-    txt('you', WALL + 14, y - 2, 12, C.p1, PIX, 700);
-    ctx.fillStyle = '#231f36'; ctx.fillRect(WALL + 52, y - 8, bw, 12);
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(WALL + 52, y - 8, bw * clamp(me.lag / me.max, 0, 1), 12);
-    ctx.fillStyle = me.hp < 25 && Math.sin(clock * 10) > 0 ? C.red : C.p1; ctx.fillRect(WALL + 52, y - 8, bw * clamp(me.hp / me.max, 0, 1), 12);
-    ctx.fillStyle = me.broken > 0 ? C.red : C.dim; ctx.fillRect(WALL + 52, y + 8, bw * 0.6 * clamp(me.guard, 0, 100) / 100, 3);
-    if (me.kickCD > 0) txt('kick ' + me.kickCD.toFixed(1) + 's', WALL + 52 + bw + 10, y - 2, 11, C.dim, MONO, 500);
-    if (me.gun > 0) { const G = GUNS[me.gunType] || GUNS.pistol; txt('* ' + me.gun + ' ' + G.name, WALL + 52, y + 24, 12, G.col, MONO, 800); }
+    if (!DEMO) {
+      txt('you', WALL + 14, y - 2, 12, C.p1, PIX, 700);
+      ctx.fillStyle = '#231f36'; ctx.fillRect(WALL + 52, y - 8, bw, 12);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(WALL + 52, y - 8, bw * clamp(me.lag / me.max, 0, 1), 12);
+      ctx.fillStyle = me.hp < 25 && Math.sin(clock * 10) > 0 ? C.red : C.p1; ctx.fillRect(WALL + 52, y - 8, bw * clamp(me.hp / me.max, 0, 1), 12);
+      ctx.fillStyle = me.broken > 0 ? C.red : C.dim; ctx.fillRect(WALL + 52, y + 8, bw * 0.6 * clamp(me.guard, 0, 100) / 100, 3);
+    }
+    if (!DEMO && me.kickCD > 0) txt('kick ' + me.kickCD.toFixed(1) + 's', WALL + 52 + bw + 10, y - 2, 11, C.dim, MONO, 500);
+    if (!DEMO && me.gun > 0) { const G = GUNS[me.gunType] || GUNS.pistol; txt('* ' + me.gun + ' ' + G.name, WALL + 52, y + 24, 12, G.col, MONO, 800); }
     const alive = royaleDuos ? new Set(players.filter(p => !p.dead).map(p => p.team)).size : players.filter(p => !p.dead).length;
     if (!royaleDuos && me.dead && state === 'play') {
       ctx.textAlign = 'center';
@@ -3063,7 +3089,7 @@
   // ---------- loop ----------
   let last = performance.now();
   function frame(now) {
-    const dt = Math.min(0.033, (now - last) / 1000);
+    const dt = Math.min(0.033, (now - last) / 1000) * DEMO_SPEED;
     last = now;
     if (state === 'menu') {
       const r = stage.getBoundingClientRect(), tall = r.width < r.height * 0.9;
@@ -3086,6 +3112,7 @@
   addEventListener('pagehide', () => { if (net.role) leaveOnline(); });
   resize();
   if (document.fonts) document.fonts.ready.then(buildBg);
+  if (DEMO) startDemo();
   requestAnimationFrame(frame);
 })();
 </script>

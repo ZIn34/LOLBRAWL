@@ -44,6 +44,8 @@ On phones you get a touch joystick and buttons. Local two-player needs a control
 
 - **On CrazyGames:** upload the `crazygames/` folder (zip `crazygames/index.html`). That copy loads the CrazyGames SDK and adds a **SKINS** menu: 8 looks for your lol (gold, neon, rainbow, ghost, fire, shouting LOL, ink), each unlocked by an optional rewarded ad, one ad per skin, with a 90-second wait between unlocks. It also shows a midgame ad between offline games, pauses and mutes during ads, respects CrazyGames' mute setting, reports gameplay start/stop, and saves with their cloud save. Skins you wear show up for other players online on every version.
 
+- **Desktop (itch.io):** `bash build-desktop.sh` builds `release/LOLbrawl-windows.zip`, a Windows app (Electron) with the lol icon. Unzip and run `LOLbrawl.exe`; F11 or Alt+Enter toggles full screen. Upload the zip to itch.io as a Windows build. `bash build-desktop.sh --media` also records fresh gameplay and makes `release/lolbrawl-short.mp4` (a vertical YouTube Short), `release/lolbrawl.gif` and `release/itch-cover.png` (630×500).
+
 Online play is peer to peer, so a very strict school or work network can occasionally block the connection.
 
 ## Editing
@@ -51,4 +53,5 @@ Online play is peer to peer, so a very strict school or work network can occasio
 - `lolbrawl.html` is the source. It's written for Claude artifacts, so it has no `<!doctype>`/`<head>` of its own.
 - After editing it, run `bash build.sh` to regenerate the standalone copies: `index.html` (GitHub Pages / itch.io) and `crazygames/index.html`.
 - `python tools/make_icons.py` redraws the app icons in `icons/` (needs Pillow).
+- Opening the game with `?demo` (VS AI, two computer lols) or `?demo=royale` (16 bots, camera on the fighting) makes it play itself. That's what the trailer and GIF are recorded from.
 - `bash tests/run.sh` runs the game headlessly with fake canvas, input, room and database stubs. It covers every mode, online sync between a simulated host and guest (claude.ai room and peer to peer), and the leaderboard. You need [Node.js](https://nodejs.org).
