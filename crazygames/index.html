@@ -810,9 +810,10 @@
 
   // players without an aim get a gentle assist toward the nearest enemy
   function aimAssist(f, range) {
-    if (mode === 'versus' || f.aimed) return;
+    if (f.aimed) return;
     let b = null, bd = range;
-    const pool = mode === 'royale' ? players.filter(o => o.team !== f.team && !o.dead) : enemies;
+    const pool = mode === 'royale' ? players.filter(o => o.team !== f.team && !o.dead)
+               : mode === 'versus' ? players.filter(o => o !== f && !o.koed) : enemies;
     for (const e of pool) { const d = Math.hypot(e.x - f.x, e.y - f.y); if (!e.dead && d < bd) { bd = d; b = e; } }
     if (b) { f.fx = (b.x - f.x) / bd; f.fy = (b.y - f.y) / bd; }
   }
@@ -1941,14 +1942,15 @@
       f.x += mx * 230 * slow * dt; f.y += my * 230 * slow * dt;
     }
 
-    // facing: versus locks on to the opponent; otherwise the mouse / right stick, else where you walk
+    // facing: the mouse / right stick, else where you walk. Only the computer opponent locks on.
     if (!f.koed && f.stun <= 0) {
       let ax = 0, ay = 0;
-      if (mode === 'versus') { const o = players[1 - f.i]; ax = o.x - f.x; ay = o.y - f.y; }
+      const lock = mode === 'versus' && f.cpu;
+      if (lock) { const o = players[1 - f.i]; ax = o.x - f.x; ay = o.y - f.y; }
       else if (inp.aim) { ax = inp.aim.fx; ay = inp.aim.fy; }
       else if (f.moving && !f.atk) { ax = mx; ay = my; }
       const al = Math.hypot(ax, ay);
-      if (al > 0.01 && (mode !== 'versus' || al > 3)) { f.fx = ax / al; f.fy = ay / al; }
+      if (al > 0.01 && (!lock || al > 3)) { f.fx = ax / al; f.fy = ay / al; }
     }
 
     if (f.atk) {
