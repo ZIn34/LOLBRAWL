@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the Windows desktop app for itch.io: release/LOLbrawl-windows.zip (unzip and run LOLbrawl.exe).
 # Also (re)makes the store media from fresh demo recordings when you pass --media:
-#   release/lolbrawl-short.mp4 (YouTube Short), release/lolbrawl.gif, release/itch-cover.png
+#   release/lolbrawl-short.mp4 (YouTube Short with sound), release/lolbrawl.gif, release/itch-cover.png
 # Needs Node.js; --media also needs Python with Pillow, numpy and imageio-ffmpeg.
 set -e
 cd "$(dirname "$0")"
@@ -11,8 +11,12 @@ cp index.html manifest.webmanifest desktop/app/ && cp -r icons desktop/app/
 (cd desktop && npm install --no-audit --no-fund >/dev/null && node node_modules/electron/install.js)
 if [ "$1" = "--media" ]; then
   rm -rf release/frames
-  (cd desktop && ./node_modules/electron/dist/electron.exe record.js ../release/frames/versus 24 30 4 versus 1920 1200 \
-              && ./node_modules/electron/dist/electron.exe record.js ../release/frames/royale 24 30 20 royale 1920 1200)
+  # each mode plays itself at 0.35x speed so every frame and every sound is captured
+  (cd desktop && E=./node_modules/electron/dist/electron.exe \
+     && $E record.js ../release/frames/solo 12 30 6 solo 1920 1200 0.35 \
+     && $E record.js ../release/frames/coop 12 30 6 coop 1920 1200 0.35 \
+     && $E record.js ../release/frames/versus 14 30 4 versus 1920 1200 0.35 \
+     && $E record.js ../release/frames/royale 14 30 20 royale 1920 1200 0.35)
   python tools/make_media.py
 else
   python -c "import sys; sys.path.insert(0, 'tools'); import make_media as m; m.make_ico()"
